@@ -1,7 +1,7 @@
 import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
 import { Camera, SplitSquareHorizontal, LayoutDashboard } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
-import TrackAnnotator from './pages/TrackAnnotator';
+import ShotAnnotator from './pages/ShotAnnotator';
 import SyncTool from './pages/SyncTool';
 import { CacheProvider } from './context/CacheContext';
 import CacheDock from './components/CacheDock';
@@ -50,7 +50,7 @@ function App() {
           <main className="flex-1 flex overflow-hidden relative">
             <Routes>
               <Route path="/" element={<Dashboard />} />
-              <Route path="/track/:dataset/:split/:trackId" element={<TrackAnnotator />} />
+              <Route path="/shot/:dataset/:split/:shotId" element={<ShotAnnotator />} />
               <Route path="/sync" element={<SyncTool />} />
             </Routes>
           </main>

@@ -1,28 +1,25 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
-import { LayoutGrid, CheckCircle } from 'lucide-react';
+import { LayoutGrid, Clapperboard } from 'lucide-react';
 
-interface TrackMeta {
-  track_id: number;
+interface ShotMeta {
+  shot_id: string;
   num_frames: number;
-  best_crop_area: number;
-  best_crop_frame: string;
-  sub_sequence: string;
-  dataset: string;
-  split: string;
+  first_frame: string;
+  frames: string[];
 }
 
 export default function Dashboard() {
-  const [tracks, setTracks] = useState<TrackMeta[]>([]);
+  const [shots, setShots] = useState<ShotMeta[]>([]);
   const [dataset, setDataset] = useState('normal');
   const [split, setSplit] = useState('train');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
-    axios.get(`http://localhost:8000/api/meta/tracks?ds=${dataset}&split=${split}`)
-      .then(res => setTracks(res.data))
+    axios.get(`http://localhost:8000/api/meta/shots?ds=${dataset}&split=${split}`)
+      .then(res => setShots(res.data))
       .catch(err => console.error(err))
       .finally(() => setLoading(false));
   }, [dataset, split]);
@@ -62,48 +59,47 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="flex flex-col items-end">
-            <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Total Tracks</div>
+            <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Total Shots</div>
             <div className="text-2xl font-black bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent leading-none">
-              {tracks.length}
+              {shots.length}
             </div>
           </div>
         </div>
 
         {loading ? (
-          <div className="text-center py-20 text-slate-400 animate-pulse">Loading tracks...</div>
+          <div className="text-center py-20 text-slate-400 animate-pulse">Loading shots...</div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {tracks.map(t => (
+            {shots.map(s => (
               <Link 
-                to={`/track/${t.dataset}/${t.split}/${t.track_id}?best=${t.best_crop_frame}`} 
-                key={t.track_id}
+                to={`/shot/${dataset}/${split}/${s.shot_id}`} 
+                key={s.shot_id}
                 className="group flex flex-col bg-slate-900/50 backdrop-blur-md rounded-2xl overflow-hidden border border-white/5 hover:border-indigo-500/50 transition-all duration-300 hover:shadow-[0_0_30px_rgba(99,102,241,0.15)] hover:-translate-y-1 cursor-pointer relative"
               >
                 <div className="absolute inset-0 bg-gradient-to-b from-indigo-500/0 via-indigo-500/0 to-indigo-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
                 
                 <div className="h-40 bg-black/40 flex items-center justify-center overflow-hidden p-4">
                   <img 
-                    src={`http://localhost:8000/api/crop/${t.dataset}/${t.split}/${t.best_crop_frame}/${t.track_id}`} 
-                    alt={`Track ${t.track_id}`}
+                    src={`http://localhost:8000/api/image/${dataset}/${split}/${s.first_frame}`} 
+                    alt={`Shot ${s.shot_id}`}
                     loading="lazy"
                     className="object-contain h-full w-full group-hover:scale-110 transition-transform duration-500 drop-shadow-2xl"
                   />
                 </div>
                 <div className="p-5 flex flex-col gap-2 relative z-10 border-t border-white/5">
                   <div className="flex justify-between items-center">
-                    <h3 className="text-lg font-bold text-white group-hover:text-indigo-300 transition-colors">
-                      Track #{t.track_id}
+                    <h3 className="text-sm font-bold text-white group-hover:text-indigo-300 transition-colors truncate" title={s.shot_id}>
+                      {s.shot_id}
                     </h3>
                     <div className="bg-indigo-500/20 text-indigo-300 p-1.5 rounded-lg group-hover:bg-indigo-500 group-hover:text-white transition-colors">
-                      <LayoutGrid className="w-4 h-4" />
+                      <Clapperboard className="w-4 h-4" />
                     </div>
                   </div>
                   <div className="flex items-center gap-2 mt-1">
                     <span className="bg-slate-800 px-2 py-1 rounded text-xs font-medium text-slate-300">
-                      {t.num_frames} frames
+                      {s.num_frames} frames
                     </span>
                   </div>
-                  <p className="text-xs text-slate-500 font-mono truncate mt-2" title={t.sub_sequence}>{t.sub_sequence}</p>
                 </div>
               </Link>
             ))}

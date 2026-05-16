@@ -1,4 +1,5 @@
 import os
+import re
 import json
 import glob
 from fastapi import FastAPI, HTTPException
@@ -19,8 +20,8 @@ app.add_middleware(
 )
 
 DATASETS = {
-    "normal": "/home/jncf/Fisheye_dataset_normal",
-    "fisheye": "/home/jncf/Fisheye_dataset_fisheye"
+    "normal": "/home/otw/chisphung/home/jncf/Fisheye_dataset_normal",
+    "fisheye": "/home/otw/chisphung/home/jncf/Fisheye_dataset_fisheye"
 }
 
 def parse_filename(filename):
@@ -444,3 +445,145 @@ def assign_cached_frame(payload: AssignCachePayload):
             
     update_metadata_for_track(ds_path, payload.split, payload.target_track_id, add_frame)
     return {"status": "success"}
+
+@app.get("/api/meta/shots")
+def get_all_shots(ds: str = "normal", split: str = "train"):
+    if ds not in DATASETS:
+        raise HTTPException(status_code=400, detail="Invalid dataset")
+    img_dir = os.path.join(DATASETS[ds], "images", split)
+    if not os.path.exists(img_dir):
+        return []
+    
+    files = sorted(os.listdir(img_dir))
+    
+    if ds == 'fisheye':
+        pattern = re.compile(r'(.*)_fisheye_(\d+)_normal_(\d+)')
+    else:
+        pattern = re.compile(r'(.*)_normal_(\d+)_fisheye_(\d+)')
+        
+    shots_map = {}
+    for f in files:
+        if not f.endswith('.jpg') and not f.endswith('.png'):
+            continue
+        match = pattern.search(f)
+        if match:
+            prefix = match.group(1)
+            fid = int(match.group(2))
+            if prefix not in shots_map:
+                shots_map[prefix] = []
+            shots_map[prefix].append((fid, f))
+            
+    all_shots = []
+    for prefix, frame_list in shots_map.items():
+        frame_list.sort(key=lambda x: x[0])
+        
+        current_subshot = []
+        subshot_idx = 0
+        
+        for i in range(len(frame_list)):
+            fid, fname = frame_list[i]
+            if i > 0:
+                prev_fid = frame_list[i-1][0]
+                if fid - prev_fid > 100:
+                    if current_subshot:
+                        all_shots.append({
+                            "shot_id": f"{prefix}_part{subshot_idx}",
+                            "num_frames": len(current_subshot),
+                            "first_frame": current_subshot[0],
+                            "frames": current_subshot
+                        })
+                        subshot_idx += 1
+                        current_subshot = []
+                        
+            current_subshot.append(fname)
+            
+        if current_subshot:
+            all_shots.append({
+                "shot_id": f"{prefix}_part{subshot_idx}",
+                "num_frames": len(current_subshot),
+                "first_frame": current_subshot[0],
+                "frames": current_subshot
+            })
+            
+    return all_shots
+
+
+class ShotAnnotationsPayload(BaseModel):
+    ds: str
+    split: str
+    frames: list[str]
+
+@app.post("/api/shot_annotations")
+def get_shot_annotations(payload: ShotAnnotationsPayload):
+    ds_path = DATASETS.get(payload.ds)
+    if not ds_path: raise HTTPException(status_code=400)
+    
+    result = {}
+    for frame in payload.frames:
+        lbl_name = frame.rsplit('.', 1)[0] + '.txt'
+        final_path = os.path.join(ds_path, "labels_finalized", payload.split, lbl_name)
+        src_path = os.path.join(ds_path, "labels_tracked", payload.split, lbl_name)
+        
+        read_path = final_path if os.path.exists(final_path) else src_path
+        boxes = []
+        if os.path.exists(read_path):
+            with open(read_path, "r") as f:
+                for line in f:
+                    parts = line.strip().split()
+                    if len(parts) >= 10:
+                        boxes.append({
+                            "class": int(parts[0]),
+                            "obb": [float(p) for p in parts[1:9]],
+                            "track_id": parts[9],
+                            "plate_text": parts[10] if len(parts) >= 11 else ""
+                        })
+        result[frame] = boxes
+    return result
+
+
+class AnnotateBoxPayload(BaseModel):
+    ds: str
+    split: str
+    frame: str
+    old_track_id: str
+    new_track_id: str
+    plate_text: str
+
+@app.post("/api/annotate_box")
+def annotate_box(payload: AnnotateBoxPayload):
+    ds_path = DATASETS.get(payload.ds)
+    if not ds_path: raise HTTPException(status_code=400)
+    
+    finalized_dir = os.path.join(ds_path, "labels_finalized", payload.split)
+    os.makedirs(finalized_dir, exist_ok=True)
+    
+    lbl_name = payload.frame.rsplit('.', 1)[0] + '.txt'
+    src_tracked = os.path.join(ds_path, "labels_tracked", payload.split, lbl_name)
+    dest_final = os.path.join(finalized_dir, lbl_name)
+    
+    read_path = dest_final if os.path.exists(dest_final) else src_tracked
+    if not os.path.exists(read_path):
+        return {"status": "error", "message": "Frame label not found"}
+        
+    out_lines = []
+    updated = False
+    with open(read_path, "r") as f:
+        for line in f:
+            parts = line.strip().split()
+            if len(parts) >= 10 and parts[9] == payload.old_track_id:
+                parts[9] = payload.new_track_id
+                if len(parts) >= 11:
+                    parts[10] = payload.plate_text
+                else:
+                    parts.append(payload.plate_text)
+                out_lines.append(" ".join(parts) + "\n")
+                updated = True
+            else:
+                out_lines.append(line)
+                
+    if updated:
+        with open(dest_final, "w") as f:
+            f.writelines(out_lines)
+            
+    return {"status": "success", "updated": updated}
+
