@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Track Editor</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <div class="logo"><span class="gradient-text">Track Editor</span></div>
+            <div class="controls">
+                <select id="split-select">
+                    <option value="train">Train</option>
+                    <option value="val">Val</option>
+                    <option value="test">Test</option>
+                </select>
+                <div class="toggle-container">
+                    <label class="switch">
+                        <input type="checkbox" id="trajectory-toggle" checked>
+                        <span class="slider round"></span>
+                    </label>
+                    <span class="toggle-label">Trajectories</span>
+                </div>
+                <div class="stats" id="stats-display">No shot selected</div>
+            </div>
+        </header>
+
+        <main>
+            <!-- Left sidebar: Shots -->
+            <div class="sidebar" id="left-sidebar">
+                <h3>Shots</h3>
+                <div class="list-container" id="shot-list"></div>
+            </div>
+
+            <!-- Second panel: Segments -->
+            <div class="panel" id="segment-panel">
+                <h3>Segments</h3>
+                <div class="list-container" id="segment-list"></div>
+            </div>
+
+            <!-- Center: Viewer -->
+            <div class="viewer">
+                <div class="canvas-container" id="canvas-container">
+                    <canvas id="main-canvas"></canvas>
+                    <div id="frame-overlay" class="frame-overlay">
+                        <span id="current-frame-name"></span>
+                    </div>
+                </div>
+
+                <!-- Editor toolbar -->
+                <div class="editor-toolbar" id="editor-toolbar">
+                    <button class="tool-btn" id="tool-select" title="Select" data-tool="select">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51z"/></svg>
+                    </button>
+                    <button class="tool-btn" id="tool-draw" title="Draw Polygon" data-tool="draw">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 22 8.5 22 15.5 12 22 2 15.5 2 8.5"/></svg>
+                    </button>
+                    <button class="tool-btn" id="tool-move" title="Move to Track" data-tool="move">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 9l4-4 4 4M5 15l4 4 4-4"/><line x1="9" y1="5" x2="9" y2="19"/><path d="M15 9l4-4 4 4"/></svg>
+                    </button>
+                    <button class="tool-btn danger" id="tool-delete" title="Delete" data-tool="delete">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14H7L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+                    </button>
+                    <div class="toolbar-divider"></div>
+                    <button class="tool-btn undo-btn" id="btn-undo" title="Undo (Ctrl+Z)">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+                        Undo
+                    </button>
+                    <button class="tool-btn cancel-btn" id="btn-cancel" title="Cancel — Restore to initial state">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                        Cancel
+                    </button>
+                    <button class="tool-btn save-btn" id="btn-save" title="Save Changes">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+                        Save
+                    </button>
+                    <span class="unsaved-badge" id="unsaved-badge" style="display:none">●</span>
+                </div>
+
+                <div class="playback-controls">
+                    <button id="prev-btn" class="icon-btn" title="Previous Frame">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+                    </button>
+                    <button id="play-btn" class="icon-btn primary" title="Play/Pause">
+                        <svg id="play-icon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                        <svg id="pause-icon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style="display:none"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                    </button>
+                    <button id="next-btn" class="icon-btn" title="Next Frame">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+                    </button>
+                    <div class="progress-container">
+                        <input type="range" id="frame-range" min="0" max="100" value="0">
+                    </div>
+                    <span class="frame-counter"><span id="current-idx">0</span>/<span id="total-frames">0</span></span>
+                    <select id="speed-select">
+                        <option value="200">0.5x</option>
+                        <option value="100" selected>1x</option>
+                        <option value="50">2x</option>
+                        <option value="25">4x</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Right sidebar: Tracks -->
+            <div class="sidebar right-sidebar" id="right-sidebar">
+                <h3>Tracks</h3>
+                <div class="track-actions">
+                    <button class="action-btn" id="btn-new-track" title="Create new track ID">+ New Track</button>
+                    <button class="show-all-btn" id="btn-show-all">Show All</button>
+                </div>
+                <div class="list-container" id="track-list"></div>
+            </div>
+        </main>
+    </div>
+
+    <script src="/static/js/viewer.js"></script>
+    <script src="/static/js/tracks.js"></script>
+    <script src="/static/js/editor.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
