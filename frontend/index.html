@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Track Editor</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/style.css?v=2">
 </head>
 <body>
     <div class="app-container">
@@ -61,8 +61,11 @@
                     <button class="tool-btn" id="tool-move" title="Move to Track" data-tool="move">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 9l4-4 4 4M5 15l4 4 4-4"/><line x1="9" y1="5" x2="9" y2="19"/><path d="M15 9l4-4 4 4"/></svg>
                     </button>
-                    <button class="tool-btn danger" id="tool-delete" title="Delete" data-tool="delete">
+                    <button class="tool-btn danger" id="tool-delete" title="Delete Bounding Box" data-tool="delete">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14H7L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+                    </button>
+                    <button class="tool-btn warning" id="tool-untrack" title="Remove from Track" data-tool="untrack">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
                     </button>
                     <div class="toolbar-divider"></div>
                     <button class="tool-btn undo-btn" id="btn-undo" title="Undo (Ctrl+Z)">
@@ -108,7 +111,8 @@
             <div class="sidebar right-sidebar" id="right-sidebar">
                 <h3>Tracks</h3>
                 <div class="track-actions">
-                    <button class="action-btn" id="btn-new-track" title="Create new track ID">+ New Track</button>
+                    <button class="action-btn" id="btn-new-track" title="Create new track ID">+ Track</button>
+                    <button class="action-btn" id="btn-reindex" title="Reindex tracks sequentially" style="background: var(--warning); border-color: var(--warning); color: var(--bg-dark);">Reindex</button>
                     <button class="show-all-btn" id="btn-show-all">Show All</button>
                 </div>
                 <div class="list-container" id="track-list"></div>
@@ -116,9 +120,9 @@
         </main>
     </div>
 
-    <script src="/static/js/viewer.js"></script>
-    <script src="/static/js/tracks.js"></script>
-    <script src="/static/js/editor.js"></script>
-    <script src="/static/js/app.js"></script>
+    <script src="/static/js/viewer.js?v=3"></script>
+    <script src="/static/js/tracks.js?v=3"></script>
+    <script src="/static/js/editor.js?v=3"></script>
+    <script src="/static/js/app.js?v=3"></script>
 </body>
 </html>

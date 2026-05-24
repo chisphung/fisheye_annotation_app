@@ -2,7 +2,7 @@ import os
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
-from ..config import IMAGE_DIR, LABEL_SOURCES, SEGMENT_GAP
+from ..config import IMAGE_DIR, LABEL_SOURCES, SEGMENT_GAP, EDIT_SOURCE, EDIT_DIR
 from ..utils.labels import parse_labels
 from ..utils.segments import build_segments, parse_frame_info
 
@@ -73,7 +73,12 @@ def get_tracks(split: str = "train", source: str = "tracked_v2", frames: str = "
 
     for fname in frame_list:
         lbl_name = fname.rsplit('.', 1)[0] + '.txt'
-        path = os.path.join(LABEL_SOURCES[source], split, lbl_name)
+        if source == EDIT_SOURCE:
+            path = os.path.join(EDIT_DIR, split, lbl_name)
+            if not os.path.exists(path):
+                path = os.path.join(LABEL_SOURCES[source], split, lbl_name)
+        else:
+            path = os.path.join(LABEL_SOURCES[source], split, lbl_name)
         boxes = parse_labels(path)
         for box in boxes:
             tid = box.get("track_id")
@@ -84,8 +89,16 @@ def get_tracks(split: str = "train", source: str = "tracked_v2", frames: str = "
             track_info[tid]["num_frames"] += 1
             track_info[tid]["frames"].append(fname)
 
-    tracks = sorted(track_info.values(), key=lambda t: int(t["track_id"]))
-    return tracks
+    tracks = []
+    for t in track_info.values():
+        try:
+            tid_val = int(t["track_id"])
+        except ValueError:
+            tid_val = float('inf')  # Fallback for non-integer IDs
+        tracks.append((tid_val, t))
+    
+    tracks.sort(key=lambda x: x[0])
+    return [t[1] for t in tracks]
 
 
 @router.get("/image/{split}/{img_name}")

@@ -22,7 +22,7 @@ class Editor {
         this.toolBtns.forEach(btn => {
             btn.classList.toggle('active', btn.dataset.tool === tool);
         });
-        this.canvas.style.cursor = tool === 'draw' ? 'crosshair' : (tool === 'delete' ? 'not-allowed' : 'default');
+        this.canvas.style.cursor = tool === 'draw' ? 'crosshair' : (tool === 'delete' || tool === 'untrack' ? 'not-allowed' : 'default');
     }
 
     handleClick(e, boxes, focusedTrackId, split, frameName) {
@@ -34,6 +34,8 @@ class Editor {
             return this.handleDraw(px, py, focusedTrackId, split, frameName, boxes);
         } else if (this.tool === 'delete') {
             return this.handleDelete(px, py, boxes, split, frameName);
+        } else if (this.tool === 'untrack') {
+            return this.handleUntrack(px, py, boxes, split, frameName);
         } else if (this.tool === 'move') {
             return this.handleMove(px, py, boxes, focusedTrackId, split, frameName);
         }
@@ -49,6 +51,15 @@ class Editor {
             const pts = this.drawingPoints.slice(0, 4);
             const coords = [];
             pts.forEach(p => { coords.push(p.x, p.y); });
+
+            // If another box in this frame already has focusedTrackId, set its track_id to null
+            if (focusedTrackId) {
+                boxes.forEach(box => {
+                    if (box.track_id === focusedTrackId) {
+                        box.track_id = null;
+                    }
+                });
+            }
 
             const newBox = {
                 "class": 0,
@@ -77,11 +88,29 @@ class Editor {
         return null;
     }
 
+    handleUntrack(px, py, boxes, split, frameName) {
+        const idx = this.viewer.hitTest(boxes, px, py);
+        if (idx >= 0) {
+            boxes[idx].track_id = null;
+            this.saveFrame(split, frameName, boxes);
+            return 'untracked';
+        }
+        return null;
+    }
+
     handleMove(px, py, boxes, focusedTrackId, split, frameName) {
         if (!focusedTrackId) return null;
         const idx = this.viewer.hitTest(boxes, px, py);
         if (idx >= 0 && boxes[idx].track_id !== focusedTrackId) {
             const oldId = boxes[idx].track_id;
+            
+            // If another box in this frame already has focusedTrackId, set its track_id to null
+            boxes.forEach(box => {
+                if (box.track_id === focusedTrackId) {
+                    box.track_id = null;
+                }
+            });
+
             boxes[idx].track_id = focusedTrackId;
             this.saveFrame(split, frameName, boxes);
             return { action: 'moved', oldId: oldId };

@@ -48,6 +48,7 @@ class App {
         this.cancelBtn = document.getElementById('btn-cancel');
         this.undoBtn = document.getElementById('btn-undo');
         this.newTrackBtn = document.getElementById('btn-new-track');
+        this.reindexBtn = document.getElementById('btn-reindex');
 
         this.trackPanel.setColorFn(tid => this.getTrackColor(tid));
         this.trackPanel.onFocus = () => this.redraw();
@@ -81,6 +82,7 @@ class App {
         this.cancelBtn.addEventListener('click', () => this.restoreLabels());
         this.undoBtn.addEventListener('click', () => this.undo());
         this.newTrackBtn.addEventListener('click', () => { this.trackPanel.addNewTrack(); this.redraw(); });
+        this.reindexBtn.addEventListener('click', () => this.reindexTracks());
         window.addEventListener('resize', () => { this.viewer.computeLayout(); this.redraw(); });
         window.addEventListener('keydown', e => {
             if (e.ctrlKey && e.key === 'z') {
@@ -220,12 +222,19 @@ class App {
         this.initialLabels = JSON.parse(JSON.stringify(this.segmentLabels));
     }
 
-    restoreLabels() {
+    async restoreLabels() {
         this.segmentLabels = JSON.parse(JSON.stringify(this.initialLabels));
         this.hasUnsaved = false;
         this.unsavedBadge.style.display = 'none';
         this.editor.drawingPoints = [];
         this.editor.setTool('select');
+        
+        // Re-save all frames to sync backend
+        const promises = Object.entries(this.segmentLabels).map(([fn, boxes]) => 
+            this.editor.saveFrame(this.split, fn, boxes)
+        );
+        await Promise.all(promises);
+        await this.trackPanel.load(this.split, this.currentSegment.frames, 'tracked_v2');
         this.redraw();
     }
 
@@ -270,7 +279,7 @@ class App {
         this.editor.drawPending(this.viewer.ctx);
     }
 
-    handleCanvasClick(e) {
+    async handleCanvasClick(e) {
         const fn = this.currentSegment?.frames[this.currentFrameIdx];
         if (!fn) return;
         const boxes = this.segmentLabels[fn] || [];
@@ -287,16 +296,43 @@ class App {
                 const oldId = result.oldId;
                 const newId = this.trackPanel.focusedTrackId;
                 
-                // Snapshot entire segment for global undo
-                this.history.push({
-                    type: 'global',
-                    labels: JSON.parse(JSON.stringify(this.segmentLabels))
-                });
-                if (this.history.length > 50) this.history.shift();
+                if (oldId) {
+                    // Check if they overlap in any frame of the segment
+                    let overlapFrame = null;
+                    Object.entries(this.segmentLabels).forEach(([frameName, frameBoxes]) => {
+                        const boxesToCheck = (frameName === fn) ? snapshotBoxes : frameBoxes;
+                        const existedOld = boxesToCheck.some(box => box.track_id === oldId);
+                        const existedNew = boxesToCheck.some(box => box.track_id === newId);
+                        if (existedOld && existedNew) {
+                            overlapFrame = frameName;
+                        }
+                    });
 
-                this.mergeTracks(oldId, newId);
+                    if (overlapFrame) {
+                        alert(`Tracks merged, but they overlap in frame: ${overlapFrame}`);
+                    }
+
+                    // Snapshot entire segment for global undo
+                    this.history.push({
+                        type: 'global',
+                        labels: JSON.parse(JSON.stringify(this.segmentLabels))
+                    });
+                    if (this.history.length > 50) this.history.shift();
+
+                    await this.mergeTracks(oldId, newId);
+                } else {
+                    // Moving from untracked to tracked. This is a single-frame change.
+                    this.history.push({
+                        type: 'frame',
+                        fn: fn,
+                        boxes: snapshotBoxes
+                    });
+                    if (this.history.length > 50) this.history.shift();
+                    this.segmentLabels[fn] = boxes;
+                    await this.trackPanel.load(this.split, this.currentSegment.frames, 'tracked_v2');
+                }
             } else if (action !== 'drawing') {
-                // Completed single-frame action
+                // Completed single-frame action (draw, delete, untrack)
                 this.history.push({
                     type: 'frame',
                     fn: fn,
@@ -304,6 +340,7 @@ class App {
                 });
                 if (this.history.length > 50) this.history.shift();
                 this.segmentLabels[fn] = boxes;
+                await this.trackPanel.load(this.split, this.currentSegment.frames, 'tracked_v2');
             }
             this.redraw();
         }
@@ -333,6 +370,77 @@ class App {
         this.redraw();
     }
 
+    async reindexTracks() {
+        // Collect all unique track IDs present in the segment
+        const tids = new Set();
+        Object.values(this.segmentLabels).forEach(frameBoxes => {
+            frameBoxes.forEach(box => {
+                if (box.track_id) {
+                    tids.add(box.track_id);
+                }
+            });
+        });
+
+        // Sort track IDs numerically
+        const sortedTids = Array.from(tids).sort((a, b) => {
+            const aid = parseInt(a);
+            const bid = parseInt(b);
+            if (isNaN(aid)) return 1;
+            if (isNaN(bid)) return -1;
+            return aid - bid;
+        });
+
+        if (sortedTids.length === 0) {
+            alert("No tracks to reindex.");
+            return;
+        }
+
+        // Create mapping: old_id -> sequential_id (starting from 1)
+        const mapping = {};
+        sortedTids.forEach((tid, index) => {
+            mapping[tid] = (index + 1).toString();
+        });
+
+        // Check if any change actually happens (avoid unnecessary saves)
+        let hasChanges = false;
+        const affectedFrames = [];
+
+        Object.entries(this.segmentLabels).forEach(([fn, frameBoxes]) => {
+            let frameChanged = false;
+            frameBoxes.forEach(box => {
+                if (box.track_id && mapping[box.track_id] !== box.track_id) {
+                    box.track_id = mapping[box.track_id];
+                    frameChanged = true;
+                    hasChanges = true;
+                }
+            });
+            if (frameChanged) {
+                affectedFrames.push({ fn, boxes: frameBoxes });
+            }
+        });
+
+        if (!hasChanges) {
+            alert("Tracks are already sequentially indexed.");
+            return;
+        }
+
+        // Snapshot entire segment for global undo
+        this.history.push({
+            type: 'global',
+            labels: JSON.parse(JSON.stringify(this.segmentLabels))
+        });
+        if (this.history.length > 50) this.history.shift();
+
+        // Save all affected frames to backend
+        const promises = affectedFrames.map(f => this.editor.saveFrame(this.split, f.fn, f.boxes));
+        await Promise.all(promises);
+
+        // Refresh track list and redraw
+        await this.trackPanel.load(this.split, this.currentSegment.frames, 'tracked_v2');
+        this.redraw();
+        alert("Tracks reindexed successfully!");
+    }
+
     async undo() {
         // If drawing, undo last point
         if (this.editor.tool === 'draw' && this.editor.drawingPoints.length > 0) {
@@ -357,6 +465,7 @@ class App {
             const fn = lastState.fn;
             this.segmentLabels[fn] = lastState.boxes;
             await this.editor.saveFrame(this.split, fn, lastState.boxes);
+            await this.trackPanel.load(this.split, this.currentSegment.frames, 'tracked_v2');
         }
         
         this.redraw();
